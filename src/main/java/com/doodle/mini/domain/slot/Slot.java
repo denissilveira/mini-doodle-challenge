@@ -83,4 +83,32 @@ public class Slot {
     public boolean isBooked() {
         return status == SlotStatus.BOOKED;
     }
+
+    public static Slot createFree(
+            Calendar calendar,
+            TimeRange timeRange) {
+        return new Slot(calendar, timeRange);
+    }
+
+    public void moveTo(TimeRange newTimeRange) {
+        if (isBooked()) {
+            throw new IllegalStateException("A booked slot cannot be moved");
+        }
+        this.timeRange = newTimeRange;
+    }
+
+    public void block() {
+        if (isBooked()) {
+            throw new IllegalStateException("A booked slot cannot be blocked");
+        }
+        status = SlotStatus.BLOCKED;
+    }
+
+    public void markAsFree() {
+        if (isBooked()) {
+            throw new IllegalStateException("A booked slot cannot be released directly");
+        }
+
+        status = SlotStatus.FREE;
+    }
 }
