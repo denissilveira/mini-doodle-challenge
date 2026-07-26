@@ -1,0 +1,9 @@
+target/
+.git/
+.github/
+.idea/
+.vscode/
+*.iml
+.DS_Store
+README.md
+docs/TESTING_COMPLETE_FLOW.md

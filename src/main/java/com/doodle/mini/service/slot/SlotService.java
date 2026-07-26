@@ -4,7 +4,6 @@ import com.doodle.mini.api.slot.CreateSlotRequest;
 import com.doodle.mini.api.slot.SlotResponse;
 import com.doodle.mini.api.slot.UpdateSlotRequest;
 import com.doodle.mini.api.slot.UpdateSlotStatusRequest;
-import com.doodle.mini.domain.calendar.Calendar;
 import com.doodle.mini.domain.slot.Slot;
 import com.doodle.mini.domain.slot.SlotStatus;
 import com.doodle.mini.domain.slot.TimeRange;
@@ -13,6 +12,7 @@ import com.doodle.mini.infrastructure.persistence.slot.SlotRepository;
 import com.doodle.mini.service.calendar.exception.CalendarNotFoundException;
 import com.doodle.mini.service.slot.exception.BookedSlotOperationException;
 import com.doodle.mini.service.slot.exception.InvalidSlotStatusException;
+import com.doodle.mini.service.slot.exception.InvalidSlotTimeRangeException;
 import com.doodle.mini.service.slot.exception.SlotNotFoundException;
 import com.doodle.mini.service.slot.exception.SlotOverlapException;
 import com.doodle.mini.shared.api.PageResponse;
@@ -36,6 +36,7 @@ public class SlotService {
 
     @Transactional
     public SlotResponse create(UUID userId, CreateSlotRequest request) {
+        validateTimeRange(request.startAt(), request.endAt());
         var timeRange = new TimeRange(request.startAt(), request.endAt());
         var calendar = calendarRepository.findOneByUserId(userId)
             .orElseThrow(() -> new CalendarNotFoundException(userId));
@@ -68,7 +69,8 @@ public class SlotService {
         SlotStatus status,
         Pageable pageable) {
 
-        Calendar calendar = calendarRepository.findByUserId(userId)
+        validateTimeRange(from, to);
+        var calendar = calendarRepository.findByUserId(userId)
             .orElseThrow(() -> new CalendarNotFoundException(userId));
 
         var slots = findSlots(calendar.getId(), from, to, status, pageable);
@@ -78,13 +80,10 @@ public class SlotService {
 
     @Transactional
     public SlotResponse update(UUID slotId, UpdateSlotRequest request) {
-
+        validateTimeRange(request.startAt(), request.endAt());
         var timeRange = new TimeRange(request.startAt(), request.endAt());
         var calendarId = slotRepository.findCalendarIdById(slotId)
                 .orElseThrow(() -> new SlotNotFoundException(slotId));
-
-        calendarRepository.findOneById(calendarId)
-            .orElseThrow(() -> new IllegalStateException("Calendar not found: " + calendarId));
 
         Slot slot = findSlotForUpdate(slotId);
 
@@ -144,6 +143,12 @@ public class SlotService {
         slotRepository.flush();
 
         log.info("Slot deleted. slotId={}", slotId);
+    }
+
+    private void validateTimeRange(Instant startAt, Instant endAt) {
+        if (startAt != null && endAt != null && !startAt.isBefore(endAt)) {
+            throw new InvalidSlotTimeRangeException();
+        }
     }
 
     private Slot findSlot(UUID slotId) {

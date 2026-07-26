@@ -13,8 +13,11 @@ import com.doodle.mini.service.meeting.exception.MeetingNotFoundException;
 import com.doodle.mini.service.meeting.exception.MeetingParticipantsNotFoundException;
 import com.doodle.mini.service.meeting.exception.SlotNotAvailableForMeetingException;
 import com.doodle.mini.service.slot.exception.SlotNotFoundException;
+import com.doodle.mini.service.user.exception.UserNotFoundException;
+import com.doodle.mini.shared.api.PageResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,6 +57,16 @@ public class MeetingService {
             meeting.getId(), slotId, participants.size());
 
         return MeetingResponse.from(meeting);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<MeetingResponse> findAllByUserId(UUID userId, Pageable pageable) {
+        log.debug("Listing meetings for user. userId={}", userId);
+        if (!userRepository.existsById(userId)) {
+            throw new UserNotFoundException(userId);
+        }
+        var page = meetingRepository.findAllByUserId(userId, pageable);
+        return PageResponse.from(page.map(MeetingResponse::from));
     }
 
     @Transactional(readOnly = true)
