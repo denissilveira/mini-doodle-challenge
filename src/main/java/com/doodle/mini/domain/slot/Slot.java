@@ -1,0 +1,86 @@
+package com.doodle.mini.domain.slot;
+
+import com.doodle.mini.domain.calendar.Calendar;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import lombok.AccessLevel;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.Instant;
+import java.util.UUID;
+
+@Getter
+@Entity
+@Table(name = "slots")
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+public class Slot {
+
+    @Id
+    @NotNull
+    @EqualsAndHashCode.Include
+    @Column(nullable = false, updatable = false)
+    private UUID id;
+
+    @Valid
+    @NotNull
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "calendar_id", nullable = false)
+    private Calendar calendar;
+
+    @Valid
+    @NotNull
+    @Embedded
+    private TimeRange timeRange;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private SlotStatus status;
+
+    @Version
+    @Column(nullable = false)
+    private long version;
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    private Slot(Calendar calendar, TimeRange timeRange) {
+        this.id = UUID.randomUUID();
+        this.calendar = calendar;
+        this.timeRange = timeRange;
+        this.status = SlotStatus.FREE;
+    }
+
+    public boolean isFree() {
+        return status == SlotStatus.FREE;
+    }
+
+    public boolean isBlocked() {
+        return status == SlotStatus.BLOCKED;
+    }
+
+    public boolean isBooked() {
+        return status == SlotStatus.BOOKED;
+    }
+}
