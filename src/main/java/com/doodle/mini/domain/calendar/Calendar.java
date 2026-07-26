@@ -19,6 +19,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Objects;
 import java.util.UUID;
 
 @Getter
@@ -64,5 +65,9 @@ public class Calendar {
 
     public static Calendar createFor(User user, ZoneId timezone) {
         return new Calendar(user, timezone);
+    }
+
+    public void changeTimezone(ZoneId timezone) {
+        this.timezone = Objects.requireNonNull(timezone, "Timezone is required").getId();
     }
 }

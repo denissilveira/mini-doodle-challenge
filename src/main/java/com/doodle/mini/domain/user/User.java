@@ -48,11 +48,17 @@ public class User {
     private Instant updatedAt;
 
     private User(String name, String email) {
+        this.id = UUID.randomUUID();
         this.name = name;
         this.email = email;
     }
 
     public static User create(String name, String email) {
         return new User(name, email);
+    }
+
+    public void update(String name, String email) {
+        this.name = name;
+        this.email = email;
     }
 }
