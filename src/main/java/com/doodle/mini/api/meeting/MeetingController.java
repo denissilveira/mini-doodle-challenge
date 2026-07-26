@@ -4,7 +4,6 @@ import com.doodle.mini.service.meeting.MeetingService;
 import com.doodle.mini.shared.api.PageResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 import java.util.UUID;
 
-@Validated
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1")
