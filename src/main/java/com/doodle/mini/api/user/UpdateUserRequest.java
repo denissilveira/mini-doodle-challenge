@@ -14,7 +14,6 @@ public record UpdateUserRequest(
     @Size(max = 255)
     String email,
 
-    @NotBlank
     @Size(max = 64)
     String timezone) {
 }

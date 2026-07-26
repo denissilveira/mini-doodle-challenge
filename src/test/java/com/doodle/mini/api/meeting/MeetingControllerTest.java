@@ -5,7 +5,9 @@ import com.doodle.mini.infrastructure.web.MeetingExceptionHandler;
 import com.doodle.mini.service.meeting.MeetingService;
 import com.doodle.mini.service.meeting.exception.MeetingNotFoundException;
 import com.doodle.mini.service.meeting.exception.SlotNotAvailableForMeetingException;
+import com.doodle.mini.service.user.exception.UserNotFoundException;
 import com.doodle.mini.shared.api.GlobalExceptionHandler;
+import com.doodle.mini.shared.api.PageResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -15,8 +17,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 import java.time.Instant;
 import java.util.Collections;
@@ -52,8 +57,13 @@ class MeetingControllerTest {
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
+        var validator = new LocalValidatorFactoryBean();
+        validator.afterPropertiesSet();
+
         mockMvc = standaloneSetup(new MeetingController(meetingService))
                 .setControllerAdvice(new GlobalExceptionHandler(), new MeetingExceptionHandler())
+                .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+                .setValidator(validator)
                 .build();
     }
 
@@ -130,6 +140,35 @@ class MeetingControllerTest {
     }
 
     @Test
+    @DisplayName("on list meetings by user, with existing user, returns 200 (paged meetings)")
+    void onFindAllByUserWithExistingUserReturns200PagedMeetings() throws Exception {
+        var userId = UUID.randomUUID();
+        var meetingId = UUID.randomUUID();
+        var slotId = UUID.randomUUID();
+
+        when(meetingService.findAllByUserId(eq(userId), any(Pageable.class)))
+                .thenReturn(new PageResponse<>(List.of(buildingMeetingResponse(meetingId, slotId)), 0, 50, 1, 1, true, true));
+
+        mockMvc.perform(get("/api/v1/users/{userId}/meetings", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    @DisplayName("on list meetings by user, with unknown user, returns 404 (not found)")
+    void onFindAllByUserWithUnknownUserReturns404NotFound() throws Exception {
+        var userId = UUID.randomUUID();
+
+        when(meetingService.findAllByUserId(eq(userId), any(Pageable.class)))
+                .thenThrow(new UserNotFoundException(userId));
+
+        mockMvc.perform(get("/api/v1/users/{userId}/meetings", userId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+    }
+
+    @Test
     @DisplayName("on update meeting, with valid data, returns 200 (updated meeting)")
     void onUpdateWithValidDataReturns200UpdatedMeeting() throws Exception {
         var meetingId = UUID.randomUUID();
@@ -158,7 +197,7 @@ class MeetingControllerTest {
     }
 
     private static CreateMeetingRequest buildDefaultCreateMeetingRequest() {
-        return new CreateMeetingRequest("Tech Challenge","Tech Challenge meeting", Collections.emptySet());
+        return new CreateMeetingRequest("Tech Challenge", "Tech Challenge meeting", Collections.emptySet());
     }
 
     private static MeetingResponse buildingMeetingResponse(UUID meetingId, UUID slotId) {

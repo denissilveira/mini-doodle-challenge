@@ -10,6 +10,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -71,6 +72,13 @@ public class GlobalExceptionHandler {
             violations
         );
         return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingParameter(
+        MissingServletRequestParameterException exception,
+        HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "MISSING_REQUIRED_PARAMETER", exception.getMessage(), request);
     }
 
     @ExceptionHandler(Exception.class)
