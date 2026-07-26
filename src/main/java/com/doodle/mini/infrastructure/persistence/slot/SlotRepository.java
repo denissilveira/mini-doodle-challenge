@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -81,5 +82,32 @@ public interface SlotRepository extends JpaRepository<Slot, UUID> {
         @Param("to") Instant to,
         @Param("status") SlotStatus status,
         Pageable pageable
+    );
+
+    @Query("""
+        select slot.status as status, count(slot) as total
+          from Slot slot
+         where slot.calendar.id = :calendarId
+           and slot.timeRange.startAt < :to
+           and slot.timeRange.endAt > :from
+         group by slot.status
+        """)
+    List<SlotStatusCount> countByStatusInRange(
+        @Param("calendarId") UUID calendarId,
+        @Param("from") Instant from,
+        @Param("to") Instant to
+    );
+
+    @Query("""
+        select slot
+          from Slot slot
+         where slot.calendar.id = :calendarId
+           and slot.timeRange.startAt < :to
+           and slot.timeRange.endAt > :from
+        """)
+    List<Slot> findAllInRange(
+        @Param("calendarId") UUID calendarId,
+        @Param("from") Instant from,
+        @Param("to") Instant to
     );
 }

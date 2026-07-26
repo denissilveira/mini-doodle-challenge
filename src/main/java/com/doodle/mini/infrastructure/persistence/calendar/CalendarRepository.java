@@ -20,5 +20,5 @@ public interface CalendarRepository extends JpaRepository<Calendar, UUID> {
     Optional<Calendar> findOneByUserId(UUID userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<Calendar> findOneById(UUID calendarId);
+    Optional<Calendar> findForUpdateById(UUID calendarId);
 }

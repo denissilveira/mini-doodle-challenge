@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.Objects;
 
 @Getter
 @Embeddable
@@ -26,6 +27,11 @@ public class TimeRange {
     private Instant endAt;
 
     public TimeRange(Instant startAt, Instant endAt) {
+        Objects.requireNonNull(startAt, "startAt is required");
+        Objects.requireNonNull(endAt, "endAt is required");
+        if (!startAt.isBefore(endAt)) {
+            throw new IllegalArgumentException("startAt must be before endAt");
+        }
         this.startAt = startAt;
         this.endAt = endAt;
     }

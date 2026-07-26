@@ -67,6 +67,22 @@ public class SlotController {
         );
     }
 
+    @GetMapping("/users/{userId}/slots/availability")
+    public SlotAvailabilityResponse getAvailability(
+        @PathVariable UUID userId,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
+        return slotService.getAvailability(userId, from, to);
+    }
+
+    @GetMapping("/users/{userId}/slots/summary")
+    public SlotAvailabilitySummaryResponse summarize(
+        @PathVariable UUID userId,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
+        return slotService.summarize(userId, from, to);
+    }
+
     @PutMapping("/slots/{slotId}")
     public SlotResponse update(
         @PathVariable UUID slotId,

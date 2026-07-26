@@ -1,4 +1,4 @@
-package com.doodle.mini.service.calendar.exception;
+package com.doodle.mini.domain.calendar.exception;
 
 import java.util.UUID;
 

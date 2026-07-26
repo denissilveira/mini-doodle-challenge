@@ -20,6 +20,7 @@ import lombok.AccessLevel;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -54,6 +55,7 @@ public class Meeting {
     private String description;
 
     @Valid
+    @BatchSize(size = 50)
     @OneToMany(mappedBy = "meeting", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<MeetingParticipant> participants = new HashSet<>();
 
@@ -71,8 +73,8 @@ public class Meeting {
             String description) {
         this.id = UUID.randomUUID();
         this.slot = slot;
-        this.title = title;
-        this.description = description;
+        this.title = normalizeTitle(title);
+        this.description = normalizeDescription(description);
     }
 
     public Set<MeetingParticipant> getParticipants() {
@@ -80,8 +82,18 @@ public class Meeting {
     }
 
     public void updateDetails(String title, String description) {
-        this.title = title;
-        this.description = description;
+        this.title = normalizeTitle(title);
+        this.description = normalizeDescription(description);
+    }
+
+    private static String normalizeTitle(String title) {
+        return title == null ? null : title.trim();
+    }
+
+    private static String normalizeDescription(String description) {
+        if (description == null) return null;
+        var trimmed = description.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     public static Meeting schedule(Slot slot, String title, String description) {

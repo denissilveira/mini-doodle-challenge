@@ -9,22 +9,25 @@ The flow will:
 3. create a participant;
 4. retrieve users (by ID, by email, paginated list);
 5. create an available slot;
-6. list and retrieve slots;
-7. verify overlap validation;
-8. schedule a meeting;
-9. retrieve the meeting;
-10. update the meeting;
-11. list the organiser's meetings;
-12. confirm that the slot is `BOOKED`;
-13. verify duplicate booking protection;
-14. verify organiser validation;
-15. cancel the meeting;
-16. confirm that the slot is `FREE` again;
-17. block and unblock the slot;
-18. update the slot's time range;
-19. update the organiser's profile;
-20. delete the slot;
-21. optional cleanup.
+6. retrieve the slot;
+7. list the organiser's slots;
+8. verify overlap validation;
+9. schedule a meeting;
+10. retrieve the meeting;
+11. update the meeting;
+12. list the meeting for both the organiser and participant, then query availability and summary;
+13. confirm that the slot is `BOOKED`;
+14. verify duplicate booking protection;
+15. verify organiser validation;
+16. cancel the meeting;
+17. confirm that the meeting no longer exists;
+18. confirm that the slot is `FREE` again;
+19. block the slot;
+20. verify that a blocked slot cannot be booked;
+21. unblock the slot;
+22. update the slot's time range;
+23. update the organiser's profile;
+24. delete the slot.
 
 ## Requirements
 
@@ -143,7 +146,7 @@ curl --silent --fail-with-body \
 
 ## 5. Create a free slot
 
-Use future timestamps. This example uses 15 August 2026 from 09:00 to 10:00 UTC.
+This example uses 15 August 2026 from 09:00 to 10:00 UTC.
 
 ```bash
 SLOT_RESPONSE=$(curl --silent --fail-with-body \
@@ -317,6 +320,44 @@ curl --silent --fail-with-body \
 ```
 
 Expected: one meeting in the list with the organiser's slot.
+
+### List the participant's meetings
+
+The same meeting is returned because this user was invited:
+
+```bash
+curl --silent --fail-with-body \
+  --get \
+  "$BASE_URL/api/v1/users/$PARTICIPANT_ID/meetings" \
+  --data-urlencode "page=0" \
+  --data-urlencode "size=20" \
+  | jq
+```
+
+### Query availability and slot summary
+
+The participant's effective `busy` intervals include the invitation even though the participant
+does not own the organiser's slot:
+
+```bash
+curl --silent --fail-with-body \
+  --get \
+  "$BASE_URL/api/v1/users/$PARTICIPANT_ID/slots/availability" \
+  --data-urlencode "from=2026-08-15T00:00:00Z" \
+  --data-urlencode "to=2026-08-16T00:00:00Z" \
+  | jq
+```
+
+The organiser's persisted slot summary contains one booked slot:
+
+```bash
+curl --silent --fail-with-body \
+  --get \
+  "$BASE_URL/api/v1/users/$ORGANIZER_ID/slots/summary" \
+  --data-urlencode "from=2026-08-15T00:00:00Z" \
+  --data-urlencode "to=2026-08-16T00:00:00Z" \
+  | jq
+```
 
 ## 13. Confirm that the slot became booked
 
@@ -656,6 +697,45 @@ if [[ "$MEETING_COUNT" -lt 1 ]]; then
   exit 1
 fi
 
+echo "Listing participant meetings..."
+PARTICIPANT_MEETING_COUNT=$(curl --silent --fail-with-body \
+  --get \
+  "$BASE_URL/api/v1/users/$PARTICIPANT_ID/meetings" \
+  --data-urlencode "page=0" \
+  --data-urlencode "size=20" \
+  | jq '.totalElements')
+
+if [[ "$PARTICIPANT_MEETING_COUNT" -lt 1 ]]; then
+  echo "Expected the participant meeting but received $PARTICIPANT_MEETING_COUNT"
+  exit 1
+fi
+
+echo "Checking participant effective availability..."
+PARTICIPANT_BUSY_COUNT=$(curl --silent --fail-with-body \
+  --get \
+  "$BASE_URL/api/v1/users/$PARTICIPANT_ID/slots/availability" \
+  --data-urlencode "from=2026-08-15T00:00:00Z" \
+  --data-urlencode "to=2026-08-16T00:00:00Z" \
+  | jq '.busy | length')
+
+if [[ "$PARTICIPANT_BUSY_COUNT" -ne 1 ]]; then
+  echo "Expected one participant busy interval but received $PARTICIPANT_BUSY_COUNT"
+  exit 1
+fi
+
+echo "Checking organiser slot summary..."
+BOOKED_SLOT_COUNT=$(curl --silent --fail-with-body \
+  --get \
+  "$BASE_URL/api/v1/users/$ORGANIZER_ID/slots/summary" \
+  --data-urlencode "from=2026-08-15T00:00:00Z" \
+  --data-urlencode "to=2026-08-16T00:00:00Z" \
+  | jq '.booked')
+
+if [[ "$BOOKED_SLOT_COUNT" -ne 1 ]]; then
+  echo "Expected one booked slot but received $BOOKED_SLOT_COUNT"
+  exit 1
+fi
+
 echo "Checking booked slot..."
 SLOT_STATUS=$(curl --silent --fail-with-body \
   "$BASE_URL/api/v1/slots/$SLOT_ID" \
@@ -747,10 +827,6 @@ Use different email addresses or generate a suffix:
 ```bash
 SUFFIX=$(date +%s)
 ```
-
-### Slot timestamps are in the past
-
-Replace the sample dates with future ISO-8601 timestamps.
 
 ### Invalid timestamp format
 

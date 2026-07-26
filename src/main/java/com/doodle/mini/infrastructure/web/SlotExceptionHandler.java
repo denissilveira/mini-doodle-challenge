@@ -1,6 +1,6 @@
 package com.doodle.mini.infrastructure.web;
 
-import com.doodle.mini.service.calendar.exception.CalendarNotFoundException;
+import com.doodle.mini.domain.calendar.exception.CalendarNotFoundException;
 import com.doodle.mini.service.slot.exception.*;
 import com.doodle.mini.shared.api.ApiErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;

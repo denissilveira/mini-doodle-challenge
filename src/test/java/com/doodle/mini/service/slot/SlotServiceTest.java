@@ -1,6 +1,9 @@
 package com.doodle.mini.service.slot;
 
 import com.doodle.mini.api.slot.CreateSlotRequest;
+import com.doodle.mini.api.slot.SlotAvailabilityResponse;
+import com.doodle.mini.api.slot.SlotAvailabilitySummaryResponse;
+import com.doodle.mini.api.slot.TimeInterval;
 import com.doodle.mini.api.slot.UpdateSlotRequest;
 import com.doodle.mini.api.slot.UpdateSlotStatusRequest;
 import com.doodle.mini.domain.calendar.Calendar;
@@ -9,8 +12,11 @@ import com.doodle.mini.domain.slot.SlotStatus;
 import com.doodle.mini.domain.slot.TimeRange;
 import com.doodle.mini.domain.user.User;
 import com.doodle.mini.infrastructure.persistence.calendar.CalendarRepository;
+import com.doodle.mini.infrastructure.persistence.meeting.MeetingRepository;
+import com.doodle.mini.infrastructure.persistence.meeting.MeetingTimeRangeView;
 import com.doodle.mini.infrastructure.persistence.slot.SlotRepository;
-import com.doodle.mini.service.calendar.exception.CalendarNotFoundException;
+import com.doodle.mini.infrastructure.persistence.slot.SlotStatusCount;
+import com.doodle.mini.domain.calendar.exception.CalendarNotFoundException;
 import com.doodle.mini.service.slot.exception.BookedSlotOperationException;
 import com.doodle.mini.service.slot.exception.InvalidSlotStatusException;
 import com.doodle.mini.service.slot.exception.InvalidSlotTimeRangeException;
@@ -47,6 +53,7 @@ class SlotServiceTest {
     private static final Instant END_AT = Instant.parse("2026-08-15T10:00:00Z");
 
     @Mock private CalendarRepository calendarRepository;
+    @Mock private MeetingRepository meetingRepository;
     @Mock private SlotRepository slotRepository;
     @InjectMocks private SlotService slotService;
 
@@ -198,6 +205,7 @@ class SlotServiceTest {
         var request = new UpdateSlotRequest(newStart, newEnd);
 
         when(slotRepository.findCalendarIdById(slot.getId())).thenReturn(Optional.of(slot.getCalendar().getId()));
+        when(calendarRepository.findForUpdateById(slot.getCalendar().getId())).thenReturn(Optional.of(slot.getCalendar()));
         when(slotRepository.findForUpdateById(slot.getId())).thenReturn(Optional.of(slot));
         when(slotRepository.existsOverlappingSlotExcludingId(
                 slot.getCalendar().getId(), slot.getId(), newStart, newEnd)).thenReturn(false);
@@ -227,6 +235,7 @@ class SlotServiceTest {
         var request = new UpdateSlotRequest(START_AT, END_AT);
 
         when(slotRepository.findCalendarIdById(slot.getId())).thenReturn(Optional.of(slot.getCalendar().getId()));
+        when(calendarRepository.findForUpdateById(slot.getCalendar().getId())).thenReturn(Optional.of(slot.getCalendar()));
         when(slotRepository.findForUpdateById(slot.getId())).thenReturn(Optional.of(slot));
 
         assertThatThrownBy(() -> slotService.update(slot.getId(), request))
@@ -241,6 +250,7 @@ class SlotServiceTest {
         var request = new UpdateSlotRequest(START_AT, END_AT);
 
         when(slotRepository.findCalendarIdById(slot.getId())).thenReturn(Optional.of(slot.getCalendar().getId()));
+        when(calendarRepository.findForUpdateById(slot.getCalendar().getId())).thenReturn(Optional.of(slot.getCalendar()));
         when(slotRepository.findForUpdateById(slot.getId())).thenReturn(Optional.of(slot));
         when(slotRepository.existsOverlappingSlotExcludingId(
                 slot.getCalendar().getId(), slot.getId(), START_AT, END_AT)).thenReturn(true);
@@ -259,6 +269,89 @@ class SlotServiceTest {
 
         assertThatThrownBy(() -> slotService.update(slotId, request))
                 .isInstanceOf(SlotNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("on summarize slots, with valid range, returns aggregated counts")
+    void onSummarizeWithValidRangeReturnsAggregatedCounts() {
+        var userId = UUID.randomUUID();
+        var calendar = calendar(userId);
+
+        when(calendarRepository.findByUserId(userId)).thenReturn(Optional.of(calendar));
+        when(slotRepository.countByStatusInRange(calendar.getId(), START_AT, END_AT))
+                .thenReturn(List.of(
+                        statusCount(SlotStatus.FREE, 3),
+                        statusCount(SlotStatus.BOOKED, 1),
+                        statusCount(SlotStatus.BLOCKED, 2)
+                ));
+
+        SlotAvailabilitySummaryResponse response = slotService.summarize(userId, START_AT, END_AT);
+
+        assertThat(response.total()).isEqualTo(6);
+        assertThat(response.free()).isEqualTo(3);
+        assertThat(response.booked()).isEqualTo(1);
+        assertThat(response.blocked()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("on summarize slots, with inverted range, throws InvalidSlotTimeRangeException")
+    void onSummarizeWithInvertedRangeThrowsInvalidSlotTimeRangeException() {
+        var userId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> slotService.summarize(userId, END_AT, START_AT))
+                .isInstanceOf(InvalidSlotTimeRangeException.class);
+        verify(calendarRepository, never()).findByUserId(any());
+    }
+
+    @Test
+    @DisplayName("on summarize slots, with calendar not found, throws CalendarNotFoundException")
+    void onSummarizeWithCalendarNotFoundThrowsCalendarNotFoundException() {
+        var userId = UUID.randomUUID();
+
+        when(calendarRepository.findByUserId(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> slotService.summarize(userId, START_AT, END_AT))
+                .isInstanceOf(CalendarNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("on get availability, with a participant meeting, subtracts it from free time")
+    void onGetAvailabilitySubtractsParticipantMeetingFromFreeTime() {
+        var userId = UUID.randomUUID();
+        var calendar = calendar(userId);
+        var windowFrom = Instant.parse("2026-08-15T08:00:00Z");
+        var windowTo = Instant.parse("2026-08-15T13:00:00Z");
+        var freeStart = Instant.parse("2026-08-15T09:00:00Z");
+        var freeEnd = Instant.parse("2026-08-15T12:00:00Z");
+        var meetingStart = Instant.parse("2026-08-15T10:00:00Z");
+        var meetingEnd = Instant.parse("2026-08-15T11:00:00Z");
+        var freeSlot = Slot.createFree(calendar, new TimeRange(freeStart, freeEnd));
+
+        when(calendarRepository.findByUserId(userId)).thenReturn(Optional.of(calendar));
+        when(slotRepository.findAllInRange(calendar.getId(), windowFrom, windowTo))
+                .thenReturn(List.of(freeSlot));
+        when(meetingRepository.findParticipantMeetingTimeRanges(userId, windowFrom, windowTo))
+                .thenReturn(List.of(meetingRange(meetingStart, meetingEnd)));
+
+        SlotAvailabilityResponse response = slotService.getAvailability(userId, windowFrom, windowTo);
+
+        assertThat(response.free()).containsExactly(
+                new TimeInterval(freeStart, meetingStart),
+                new TimeInterval(meetingEnd, freeEnd)
+        );
+        assertThat(response.busy()).containsExactly(
+                new TimeInterval(meetingStart, meetingEnd)
+        );
+    }
+
+    @Test
+    @DisplayName("on get availability, with inverted range, throws InvalidSlotTimeRangeException")
+    void onGetAvailabilityWithInvertedRangeThrows() {
+        var userId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> slotService.getAvailability(userId, END_AT, START_AT))
+                .isInstanceOf(InvalidSlotTimeRangeException.class);
+        verify(calendarRepository, never()).findByUserId(any());
     }
 
     @Test
@@ -343,6 +436,20 @@ class SlotServiceTest {
 
         assertThatThrownBy(() -> slotService.delete(slotId))
                 .isInstanceOf(SlotNotFoundException.class);
+    }
+
+    private static SlotStatusCount statusCount(SlotStatus status, long total) {
+        return new SlotStatusCount() {
+            public SlotStatus getStatus() { return status; }
+            public long getTotal() { return total; }
+        };
+    }
+
+    private static MeetingTimeRangeView meetingRange(Instant start, Instant end) {
+        return new MeetingTimeRangeView() {
+            public Instant getStartAt() { return start; }
+            public Instant getEndAt() { return end; }
+        };
     }
 
     private Calendar calendar(UUID userId) {

@@ -20,6 +20,8 @@ A user publishes available time slots in their calendar. A meeting can then be s
 - Retrieve a slot by ID.
 - List a user's slots within a period.
 - Filter slots by status.
+- Get an aggregated availability view for a time frame: merged `free` and `busy` intervals clipped to the window.
+- Get a slot count summary for a time frame (totals by status: `free`, `booked`, `blocked`).
 - Update a slot's time range.
 - Block or unblock a slot.
 - Delete an unbooked slot.
@@ -38,7 +40,7 @@ Clients cannot set a slot directly to `BOOKED`. That transition belongs exclusiv
 
 - Schedule a meeting in a free slot.
 - Retrieve a meeting by ID.
-- List a user's meetings with pagination.
+- List meetings a user organises or attends, with pagination.
 - Update meeting details and participants.
 - Cancel a meeting.
 
@@ -46,12 +48,25 @@ When a meeting is created, the application locks the slot, validates its current
 
 When a meeting is cancelled, its slot becomes `FREE` again.
 
+### Effective availability
+
+`GET /api/v1/users/{userId}/slots/availability` returns an effective view for the requested
+window:
+
+- `free` contains the user's published `FREE` slots, merged and clipped to the window;
+- `busy` contains the user's `BOOKED` and `BLOCKED` slots plus meetings where the user is an invited participant;
+- invited meeting intervals are subtracted from `free`, but do not mutate the participant's own slots.
+
+The summary endpoint reports persisted slot counts by status. It intentionally does not count
+participant invitations because those are meetings, not participant-owned slots.
+
 ## Technology stack
 
 - Java 25
 - Spring Boot
 - PostgreSQL
 - Liquibase
+- Testcontainers
 
 ## Domain model
 
@@ -71,13 +86,45 @@ Meeting → Slot → Calendar → User
 
 The meeting participant relation is modelled explicitly through `MeetingParticipant`, which allows the association to receive additional fields later, such as invitation status or response timestamps.
 
+## API endpoints
+
+All business endpoints use the `/api/v1` prefix.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/users` | Create a user and personal calendar. |
+| `GET` | `/users`, `/users/{userId}`, `/users/email?email=...` | List or retrieve users. |
+| `PUT` | `/users/{userId}` | Update user details and timezone. |
+| `POST` | `/users/{userId}/slots` | Publish a free slot. |
+| `GET` | `/slots/{slotId}` | Retrieve a slot. |
+| `GET` | `/users/{userId}/slots?from=...&to=...&status=...` | Query overlapping slots, optionally by status. |
+| `GET` | `/users/{userId}/slots/availability?from=...&to=...` | Query merged effective free/busy intervals. |
+| `GET` | `/users/{userId}/slots/summary?from=...&to=...` | Count persisted slots by status. |
+| `PUT` | `/slots/{slotId}` | Change an unbooked slot's interval. |
+| `PATCH` | `/slots/{slotId}/status` | Block or release an unbooked slot. |
+| `DELETE` | `/slots/{slotId}` | Delete an unbooked slot. |
+| `POST` | `/slots/{slotId}/meetings` | Convert a free slot into a meeting. |
+| `GET` | `/meetings/{meetingId}` | Retrieve a meeting. |
+| `GET` | `/users/{userId}/meetings` | List meetings organised by or inviting the user. |
+| `PUT` | `/meetings/{meetingId}` | Update meeting details and participants. |
+| `DELETE` | `/meetings/{meetingId}` | Cancel a meeting and release its slot. |
+
+Timestamps use ISO-8601 with an offset, for example `2026-08-15T09:00:00Z`. Pagination uses
+Spring's `page`, `size`, and `sort` query parameters. See the
+[complete curl flow](docs/TESTING_COMPLETE_FLOW.md) or the Swagger UI for request and response
+examples.
+
 ## Concurrency strategy
 
-### Creating or moving slots
+### Creating a slot
 
-The calendar row is locked with `PESSIMISTIC_WRITE` before checking overlaps. This serialises interval changes within one calendar while allowing different calendars to be modified concurrently.
+The calendar row is locked with `PESSIMISTIC_WRITE` before checking for overlaps. This serialises all interval changes within one calendar, eliminating the TOCTOU window where two concurrent requests could both pass the overlap check. Different calendars are unaffected.
 
-### Scheduling meetings
+### Moving a slot
+
+The calendar row is locked first, then the slot row. Acquiring in this fixed order (calendar → slot) ensures consistency with the create path and avoids deadlocks against any future operation that acquires the same locks.
+
+### Scheduling a meeting
 
 The slot row is locked with `PESSIMISTIC_WRITE` before checking whether it is `FREE`. This prevents two concurrent requests from booking the same slot.
 
@@ -97,10 +144,10 @@ No local Maven build is required because the `Dockerfile` executes the Maven bui
 docker compose up --build
 ```
 
-To run the containers in the background:
+To run the containers in the background and wait until both are healthy:
 
 ```bash
-docker compose up --build -d
+docker compose up --build -d --wait
 ```
 
 The services will be available at:
@@ -268,9 +315,30 @@ The following actuator endpoints are enabled: `health`, `info`, `metrics`, `prom
 
 ## Testing strategy
 
-The test suite covers the service and controller layers with unit tests using Mockito and MockMvc.
+The test suite includes:
 
-Repository-level integration tests — validating the JPQL overlap queries, pagination behaviour, and pessimistic-lock semantics against a real database — would require [Testcontainers](https://testcontainers.com/) with a PostgreSQL container and `@DataJpaTest`. This layer is a known gap and would be the natural next step to increase confidence in the persistence layer.
+- unit tests for the service layer with Mockito;
+- HTTP contract tests for controllers with MockMvc;
+- Spring Boot integration tests against PostgreSQL with Testcontainers, covering Liquibase/Hibernate startup, overlap rules, participant meeting queries, effective availability, and concurrent slot creation.
+
+Run the complete suite with Docker available:
+
+```bash
+./mvnw verify
+```
+
+With Rancher Desktop on macOS, expose its Docker socket to Testcontainers. The host override is
+needed by the VZ rootless runtime:
+
+```bash
+export DOCKER_HOST="unix://$HOME/.rd/docker.sock"
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
+export TESTCONTAINERS_HOST_OVERRIDE="$(rdctl shell ip a show vznat | awk '/inet / {sub("/.*", ""); print $2}')"
+./mvnw verify
+```
+
+The GitHub Actions workflow runs the suite and then builds and health-checks the complete Docker
+Compose environment.
 
 ## Business rules
 
@@ -284,8 +352,9 @@ Repository-level integration tests — validating the JPQL overlap queries, pagi
 - The slot owner is the meeting organiser.
 - The organiser cannot also be an invited participant.
 - Every participant must reference an existing user.
+- Invited meetings appear in the participant's meeting list and effective busy intervals.
 - Cancelling a meeting releases its slot.
-- Participant calendars are not automatically blocked in this version.
+- Participant-owned slots retain their persisted status when invitations are added or removed.
 
 ## Current scope
 
@@ -295,7 +364,7 @@ This version intentionally excludes:
 - recurring meetings;
 - invitation acceptance or rejection;
 - email notifications;
-- automatic participant calendar blocking;
+- rejection of invitations that conflict with another participant meeting;
 - external calendar integrations;
 - video-conference links;
 - reminders.

@@ -6,7 +6,7 @@ import com.doodle.mini.service.meeting.MeetingService;
 import com.doodle.mini.service.meeting.exception.MeetingNotFoundException;
 import com.doodle.mini.service.meeting.exception.SlotNotAvailableForMeetingException;
 import com.doodle.mini.service.user.exception.UserNotFoundException;
-import com.doodle.mini.shared.api.GlobalExceptionHandler;
+import com.doodle.mini.infrastructure.web.GlobalExceptionHandler;
 import com.doodle.mini.shared.api.PageResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;

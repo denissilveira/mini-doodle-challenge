@@ -3,7 +3,7 @@ package com.doodle.mini.api.user;
 import com.doodle.mini.service.user.UserService;
 import com.doodle.mini.service.user.exception.EmailAlreadyExistsException;
 import com.doodle.mini.service.user.exception.UserNotFoundException;
-import com.doodle.mini.shared.api.GlobalExceptionHandler;
+import com.doodle.mini.infrastructure.web.GlobalExceptionHandler;
 import com.doodle.mini.shared.api.PageResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;

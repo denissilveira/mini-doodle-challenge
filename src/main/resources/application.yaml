@@ -16,11 +16,17 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+        default_batch_fetch_size: 50
         format_sql: false
 
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.yaml
+
+  data:
+    web:
+      pageable:
+        max-page-size: 200
 
 logging:
   level:

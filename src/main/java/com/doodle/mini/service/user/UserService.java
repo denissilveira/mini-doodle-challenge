@@ -7,6 +7,7 @@ import com.doodle.mini.domain.calendar.Calendar;
 import com.doodle.mini.domain.user.User;
 import com.doodle.mini.infrastructure.persistence.calendar.CalendarRepository;
 import com.doodle.mini.infrastructure.persistence.user.UserRepository;
+import com.doodle.mini.domain.calendar.exception.CalendarNotFoundException;
 import com.doodle.mini.service.user.exception.EmailAlreadyExistsException;
 import com.doodle.mini.service.user.exception.InvalidTimezoneException;
 import com.doodle.mini.service.user.exception.UserNotFoundException;
@@ -48,10 +49,13 @@ public class UserService {
             Calendar calendar = Calendar.createFor(user, timezone);
             calendarRepository.save(calendar);
 
-            log.debug("User created successfully. email={}", user.getEmail());
+            log.info("User created. userId={}", user.getId());
             return UserResponse.from(user, calendar);
         } catch (DataIntegrityViolationException exception) {
-            throw new EmailAlreadyExistsException(user.getEmail());
+            if (isEmailConstraintViolation(exception)) {
+                throw new EmailAlreadyExistsException(user.getEmail());
+            }
+            throw exception;
         }
     }
 
@@ -111,10 +115,13 @@ public class UserService {
 
         try {
             userRepository.flush();
-            log.debug("User updated successfully. email={}", user.getEmail());
+            log.info("User updated. userId={}", user.getId());
             return UserResponse.from(user, calendar);
         } catch (DataIntegrityViolationException exception) {
-            throw new EmailAlreadyExistsException(request.email());
+            if (isEmailConstraintViolation(exception)) {
+                throw new EmailAlreadyExistsException(request.email());
+            }
+            throw exception;
         }
     }
 
@@ -150,8 +157,19 @@ public class UserService {
         }
     }
 
+    private static boolean isEmailConstraintViolation(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        while (cause != null) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+                return "ux_users_email_lower".equals(cve.getConstraintName());
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
+
     private Calendar findCalendar(UUID userId) {
         return calendarRepository.findByUserId(userId)
-                .orElseThrow(() -> new IllegalStateException("Calendar not found for user: " + userId));
+                .orElseThrow(() -> new CalendarNotFoundException(userId));
     }
 }

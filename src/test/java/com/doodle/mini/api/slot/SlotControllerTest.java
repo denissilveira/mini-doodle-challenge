@@ -34,6 +34,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -159,6 +160,52 @@ class SlotControllerTest {
     }
 
     @Test
+    @DisplayName("on get availability, returns free and busy intervals")
+    void onGetAvailabilityReturnsFreeAndBusyIntervals() throws Exception {
+        var userId = UUID.randomUUID();
+        var busyStart = START_AT.plusSeconds(900);
+        var busyEnd = START_AT.plusSeconds(1800);
+
+        when(slotService.getAvailability(userId, START_AT, END_AT))
+                .thenReturn(new SlotAvailabilityResponse(
+                        userId,
+                        START_AT,
+                        END_AT,
+                        List.of(
+                                new TimeInterval(START_AT, busyStart),
+                                new TimeInterval(busyEnd, END_AT)),
+                        List.of(new TimeInterval(busyStart, busyEnd))));
+
+        mockMvc.perform(get("/api/v1/users/{userId}/slots/availability", userId)
+                        .queryParam("from", START_AT.toString())
+                        .queryParam("to", END_AT.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.free.length()").value(2))
+                .andExpect(jsonPath("$.busy.length()").value(1))
+                .andExpect(jsonPath("$.busy[0].start").value(busyStart.toString()))
+                .andExpect(jsonPath("$.busy[0].end").value(busyEnd.toString()));
+    }
+
+    @Test
+    @DisplayName("on summarize slots, returns status counts")
+    void onSummarizeSlotsReturnsStatusCounts() throws Exception {
+        var userId = UUID.randomUUID();
+
+        when(slotService.summarize(userId, START_AT, END_AT))
+                .thenReturn(new SlotAvailabilitySummaryResponse(
+                        userId, START_AT, END_AT, 6, 3, 1, 2));
+
+        mockMvc.perform(get("/api/v1/users/{userId}/slots/summary", userId)
+                        .queryParam("from", START_AT.toString())
+                        .queryParam("to", END_AT.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(6))
+                .andExpect(jsonPath("$.free").value(3))
+                .andExpect(jsonPath("$.booked").value(1))
+                .andExpect(jsonPath("$.blocked").value(2));
+    }
+
+    @Test
     @DisplayName("on update slot, with valid data, returns 200 (updated slot)")
     void onUpdateWithValidDataReturns200UpdatedSlot() throws Exception {
         var slotId = UUID.randomUUID();
@@ -172,6 +219,23 @@ class SlotControllerTest {
                         .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.startAt").value("2026-07-27T10:00:00Z"));
+    }
+
+    @Test
+    @DisplayName("on update slot status, returns the updated status")
+    void onUpdateStatusReturnsUpdatedStatus() throws Exception {
+        var slotId = UUID.randomUUID();
+        var request = new UpdateSlotStatusRequest(SlotStatus.BLOCKED);
+
+        when(slotService.updateStatus(eq(slotId), any(UpdateSlotStatusRequest.class)))
+                .thenReturn(new SlotResponse(
+                        slotId, START_AT, END_AT, SlotStatus.BLOCKED, null, null));
+
+        mockMvc.perform(patch("/api/v1/slots/{slotId}/status", slotId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("BLOCKED"));
     }
 
     @Test

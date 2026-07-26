@@ -25,6 +25,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    init: true
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/meeting_scheduler
       SPRING_DATASOURCE_USERNAME: postgres
@@ -36,7 +37,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -T 3 -O /dev/null http://localhost:8080/actuator/health"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   postgres_data:

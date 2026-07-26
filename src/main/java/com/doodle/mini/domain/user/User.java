@@ -15,6 +15,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 @Getter
@@ -49,8 +50,8 @@ public class User {
 
     private User(String name, String email) {
         this.id = UUID.randomUUID();
-        this.name = name;
-        this.email = email;
+        this.name = normalizeName(name);
+        this.email = normalizeEmail(email);
     }
 
     public static User create(String name, String email) {
@@ -58,8 +59,16 @@ public class User {
     }
 
     public void update(String name, String email) {
-        this.name = name;
-        this.email = email;
+        this.name = normalizeName(name);
+        this.email = normalizeEmail(email);
+    }
+
+    private static String normalizeName(String name) {
+        return name == null ? null : name.trim();
+    }
+
+    private static String normalizeEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
     }
 
     public boolean sameIdentityAs(User other) {
