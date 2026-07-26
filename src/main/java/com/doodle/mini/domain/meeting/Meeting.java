@@ -1,6 +1,8 @@
 package com.doodle.mini.domain.meeting;
 
+import com.doodle.mini.domain.meeting.exception.OrganizerCannotBeParticipantException;
 import com.doodle.mini.domain.slot.Slot;
+import com.doodle.mini.domain.user.User;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -22,10 +24,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 @Getter
 @Entity
@@ -78,6 +77,29 @@ public class Meeting {
 
     public Set<MeetingParticipant> getParticipants() {
         return Collections.unmodifiableSet(participants);
+    }
+
+    public void updateDetails(String title, String description) {
+        this.title = title;
+        this.description = description;
+    }
+
+    public static Meeting schedule(Slot slot, String title, String description) {
+        slot.book();
+        return new Meeting(slot, title, description);
+    }
+
+    public void addParticipant(User user) {
+        if (slot.isOwnedBy(user)) {
+            throw new OrganizerCannotBeParticipantException(user.getId());
+        }
+
+        participants.add(MeetingParticipant.create(this, user));
+    }
+
+    public void replaceParticipants(Collection<User> users) {
+        participants.clear();
+        users.forEach(this::addParticipant);
     }
 
 }

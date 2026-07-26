@@ -1,6 +1,7 @@
 package com.doodle.mini.domain.slot;
 
 import com.doodle.mini.domain.calendar.Calendar;
+import com.doodle.mini.domain.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -110,5 +111,28 @@ public class Slot {
         }
 
         status = SlotStatus.FREE;
+    }
+
+    public void book() {
+        if (!isFree()) {
+            throw new IllegalStateException("Only free slots can be booked");
+        }
+        status = SlotStatus.BOOKED;
+    }
+
+    public void cancelBooking() {
+        if (!isBooked()) {
+            throw new IllegalStateException("Only booked slots can be released");
+        }
+        status = SlotStatus.FREE;
+    }
+
+    public boolean isOwnedBy(User user) {
+        if (user == null) {
+            return false;
+        }
+        return calendar
+                .getUser()
+                .sameIdentityAs(user);
     }
 }

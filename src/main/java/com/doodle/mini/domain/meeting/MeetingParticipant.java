@@ -44,20 +44,15 @@ public class MeetingParticipant {
 
     private MeetingParticipant(
             Meeting meeting,
-            User user
-    ) {
+            User user) {
         this.meeting = meeting;
         this.user = user;
-        this.id = new MeetingParticipantId(
-                meeting.getId(),
-                user.getId()
-        );
+        this.id = new MeetingParticipantId(meeting.getId(), user.getId());
     }
 
     static MeetingParticipant create(
             Meeting meeting,
-            User user
-    ) {
+            User user) {
         return new MeetingParticipant(meeting, user);
     }
 }
